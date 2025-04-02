@@ -1,0 +1,59 @@
+library(readxl)
+# Importación de los datos
+GastricCancer_NMR <- read_excel("GastricCancer_NMR.xlsx")
+GastricCancer_NMR_Peak <- read_excel("GastricCancer_NMR.xlsx", 
+    sheet = "Peak")
+# Se instala el paquete SummarizedExperiment a través de Bioconductor con
+# BiocManager::install("SummarizedExperiment")
+library(SummarizedExperiment)
+library(POMA)
+#Creación del objeto SummarizedExperiment a partir de los datos importados
+#Incorporación del "rowData"
+row_Data<-data.frame(GastricCancer_NMR_Peak)
+#Incorporación del assay
+matriz_datos<-as.matrix(GastricCancer_NMR[, 5:153])
+#Incorporación de colData, usando como nombres de fila el SampleID
+metadatos<-data.frame(GastricCancer_NMR[, 1:4], row.names = GastricCancer_NMR$SampleID)
+#Es necesario trasponer la matriz para una correcta lectura de los datos de metabolitos
+matrizT<-t(matriz_datos)
+#Creación del SummarizedExperiment(SE)
+SE_GastricCancerNMR<-SummarizedExperiment(
+  assays = list(metabolitos = matrizT),
+  colData = metadatos,
+  rowData = row_Data
+)
+SE_GastricCancerNMR
+#Comprobación de valores faltantes
+sum(is.na(assays(SE_GastricCancerNMR)$metabolitos)) 
+#Metabolitos con más valores faltantes. 
+rowData(SE_GastricCancerNMR)[order(-rowData(SE_GastricCancerNMR)$Perc_missing),]
+boxplot(assays(SE_GastricCancerNMR)$metabolitos[1:50,]) 
+boxplot(assays(SE_GastricCancerNMR)$metabolitos[51:100,])
+boxplot(assays(SE_GastricCancerNMR)$metabolitos[100:149,])
+#Imputación de valores NA en el SummarizedExperiment mediante POMA
+imputed_SE_GastricCancerNMR<-PomaImpute(SE_GastricCancerNMR, ZerosAsNA = TRUE, RemoveNA = TRUE, 
+                                        cutoff= 20, method ="knn")
+#Normalización de los datos imputados utilizando el método log_pareto
+norm_SE_GastricCancerNMR<-PomaNorm(imputed_SE_GastricCancerNMR, method ="log_pareto")
+norm_SE_GastricCancerNMR
+# Se comprueba que no existen valores faltantes tras el preprocesado
+sum(is.na(norm_SE_GastricCancerNMR@assays@data@listData[[1]]))
+rowData(norm_SE_GastricCancerNMR)<-row_Data
+norm_SE_GastricCancerNMR
+matriz_concentraciones_norm<-norm_SE_GastricCancerNMR@assays@data@listData[[1]]
+boxplot(matriz_concentraciones_norm)
+#Creación del PCA
+pca<-prcomp(t(matriz_concentraciones_norm), scale = FALSE)
+#Creación de una paleta de colores para una mejor visualización de los puntos
+paleta<-c("GC" = "red", "BN" = "blue", "HE" = "green", "QC" = "black")
+#Representación del PCA
+plot(pca$x[,1], pca$x[,2], 
+     col = paleta[colData(norm_SE_GastricCancerNMR)$Class], 
+     xlab = "PC1", ylab = "PC2", pch = 19, main = "PCA")
+legend("topright", legend = unique(colData(norm_SE_GastricCancerNMR)$Class), 
+       col = 1:length(unique(colData(norm_SE_GastricCancerNMR)$Class)), pch = 19)
+m_pca<-pca$rotation
+metabolitos_pc1 <- rownames(m_pca)[order(abs(m_pca[, 1]), decreasing = TRUE)]
+head(metabolitos_pc1)
+metabolitos_pc2 <- rownames(m_pca)[order(abs(m_pca[, 2]), decreasing = TRUE)]
+head(metabolitos_pc2)
