@@ -1,0 +1,182 @@
+---
+title: "Análisis de datos ómicos. Primera prueba de evaluación continua"
+author: "Víctor Fructuoso Sánchez"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+lang: es-ES
+toc: TRUE
+---
+
+# Resumen
+El siguente estudio se centra en la metabolómica urinaria y su potencial para la detección del cáncer gástrico. Se lleva a cabo un proceso de análisis de datos ómicos simple, donde a partir de un conjunto de datos que contiene la concentración de una serie de metabolitos presentes en muestras de orina de distitnos tipos de pacientes, se realiza un análisis exploratorio de estos datos. Para ello, se crea un objeto del tipo SummarizedExperiment que contiene la información a analizar. Una vez se tiene el SummarizedExperiment creado, se procede a realizar un análisis exploratorio inicial para comprobar distintas características tales como el número de metabolitos, el número de muestras, la distribución de los datos. Por último, se realizan las transformaciones apropiadas para realizar un Análisis de Componentes Principales que permita comprobar la agrupación de las muestras estudiadas, resultando en una clara diferenciación del grupo control con respecto a las 3 clases de pacientes, además de una ligera diferenciación del grupo de pacientes con Cáncer Gástrico con respecto a los otros dos grupos de pacientes, que presentan un mayor grado de solapamiento, por último, se determinan cuáles son los metabolitos más influyentes en esta agrupación.
+
+# Objetivos
+El objetivo principal de este proyecto es la exploración de un conjunto de datos metabolitos a través de un objeto tipo SummarizedExperiment y su comparación con el ExpressionSet para comprobar cómo se agrupan las muestras en función de la clase a la que pertenecen, control, individuos sanos, enfermedad gástrica benigna y cáncer gástrico.
+
+# Métodos
+Se escoge el dataset "2023-CIMCBTutorial" que contiene un conjunto de datos con información sobre la concentración de metabolitos en muestras de orina en 3 clases distitnas, que corresponden con distintos tipos de pacientes: individuos sanos (HE), enfermedad gástrica benigna (BN) y cáncer gástrico (GC). Los datos se han obtenido de *[este repositorio de GitHub]*(https://github.com/nutrimetabolomics/metaboData), aunque también pueden encontrarse en la página Metabolomics Workbench bajo la ID PR000699.
+Para el análisis se utiliza el programa R, en concreto el paquete SummarizedExperiment y el paquete POMA, ambos de Bioconductor.
+El análisis se ha enfocado de la siguiente forma:
+
+-Importación y primer vistazo a los datos, estructura y dimensiones.
+
+-Preprocesado. Consiste en la eliminación e imputación de valores faltantes y normalización de los datos con el método "log_pareto"
+
+-Análisis de Componentes Principales. Método de visualización de la separación de los grupos en  base a la concentración de metabolitos.
+
+# Resultados
+
+En primer lugar, se importan los datos y se cargan los paquetes adecuados para su análisis.
+
+```{r}
+library(readxl)
+# Importación de los datos
+GastricCancer_NMR <- read_excel("GastricCancer_NMR.xlsx")
+GastricCancer_NMR_Peak <- read_excel("GastricCancer_NMR.xlsx", 
+    sheet = "Peak")
+# Se instala el paquete SummarizedExperiment a través de Bioconductor con
+# BiocManager::install("SummarizedExperiment")
+library(SummarizedExperiment)
+library(POMA)
+```
+
+Una vez cargados los datos, se pasa a la creación de un objeto de clase SummarizedExperiment.
+Este tipo de objeto es una clase del paquete Bioconductor que permite almacenar matrices de datos junto con metadatos adicionales que describen la matriz de datos. Por tanto, un objeto de este tipo contiene:
+
+1. Una o más matrices de datos (assay) que contiene los valores de expresión, en este caso serán las concentraciones de metabolitos en las muestras. Equivalente a exprs() en un ExpressionSet
+
+2. Un conjunto de metadatos, que contiene infromación sobre las muestras. Equivalente a pData en un ExpressionSet
+
+3. Otro conjunto de metadatos, que contiene información sobre las filas de la matriz de datos, equivalente a fData en un ExpressionSet
+
+4. Información adicional opcional.
+
+Se observa que es un tipo de objeto muy similar a un ExpressionSet, con la diferencia principal de que el SummarizedExperiment es capaz de almacenar varias matrices de datos.
+```{r}
+#Creación del objeto SummarizedExperiment a partir de los datos importados
+#Incorporación del "rowData"
+row_Data<-data.frame(GastricCancer_NMR_Peak)
+#Incorporación del assay
+matriz_datos<-as.matrix(GastricCancer_NMR[, 5:153])
+#Incorporación de colData, usando como nombres de fila el SampleID
+metadatos<-data.frame(GastricCancer_NMR[, 1:4], row.names = GastricCancer_NMR$SampleID)
+#Es necesario trasponer la matriz para una correcta lectura de los datos de metabolitos
+matrizT<-t(matriz_datos)
+#Creación del SummarizedExperiment(SE)
+SE_GastricCancerNMR<-SummarizedExperiment(
+  assays = list(metabolitos = matrizT),
+  colData = metadatos,
+  rowData = row_Data
+)
+SE_GastricCancerNMR
+
+```
+Ahora se procede a obtener información de este objeto para conocer las características del conjunto de datos
+En el objeto SummarizedExperiment creado se observa que contiene 149 filas, que se corresponden con cada metabolito, de las cuales se dispone de información adicional en rowData. Por otro lado, el objeto presenta 140 columnas, donde cada una se corresponde con una muestra del conjunto de datos. Por lo tanto, el conjunto de datos contiene 140 muestras, donde de cada muestra se mide la concentración de 149 metabolitos. 
+
+Los componentes del SummarizedExperiment se pueden consultar por separado en el Anexo.
+
+Con el comando rowData se observa la información de los metabolitos. En este caso, disponemos de una ID, que se corresponde con cada metabolito, el nombre del metabolito, siguiendo el mismo criterio que en el assay "metabolitos", una etiqueta con el metabolito, y unos valores de Perc_missing, que indican el porcentaje de valores faltantes por cada metabolito y QC_RSD, que muestra un coeficiente de variación con respecto a las muestras control (QC)
+
+Al extraer el colData, se obtiene información de cada muestra, donde se encuentra una ID para cada muestra, el tipo de muestra (si es o no una muestra control) y la clase.
+
+También se puede extraer la información de la concentración de metabolitos en cada una de las muestras. En este caso se observan las primeras líneas y columnas del conjunto de datos.
+A continuación se explora si el conjunto de datos contiene valores faltantes y cuales son los metabolitos con mayor porcentaje de NA, esto puede comprobarse ordenando los valores en función de la columna Perc_missing, presente en rowData, lo que nos permite saber cuales son los metabolitos con menor número de muestras.
+```{r}
+#Comprobación de valores faltantes
+sum(is.na(assays(SE_GastricCancerNMR)$metabolitos)) 
+#Metabolitos con más valores faltantes. 
+rowData(SE_GastricCancerNMR)[order(-rowData(SE_GastricCancerNMR)$Perc_missing),] 
+```
+Se observa que existen un total de 1069 valores faltantes, donde el metabolito M21 (4-Hydroxyphenylacetate) es el que presenta un mayor porcentaje (31.43% de valores faltantes, aproximadamente)
+Se muestra a continuación un boxplot para comprobar la distribución de los datos
+```{r}
+boxplot(assays(SE_GastricCancerNMR)$metabolitos[1:50,])
+```
+Para una primera representación, se han dividido los metabolitos en grupos (del 1 al 50, del 50 al 100 y del 100 al 149, los dos boxplot restantes pueden consultarse en el Anexo). Se observa una elevada variabilidad entre la concentración de metabolitos, donde la mayoría de datos parecen encontrarse muy cercanos al 0, por lo que se procede a realizar un preprocesamiento de los datos mediante el paquete POMA, también de Bioconductor.
+El preprocesado que se realiza en los datos consiste en una imputación de los valores NA, usando un método knn, y una normalización de los datos, con un umbral de eliminación de los valores faltantes del 20%.
+```{r}
+#Imputación de valores NA en el SummarizedExperiment mediante POMA
+imputed_SE_GastricCancerNMR<-PomaImpute(SE_GastricCancerNMR, ZerosAsNA = TRUE, RemoveNA = TRUE, 
+                                        cutoff= 20, method ="knn")
+#Normalización de los datos imputados utilizando el método log_pareto
+norm_SE_GastricCancerNMR<-PomaNorm(imputed_SE_GastricCancerNMR, method ="log_pareto")
+norm_SE_GastricCancerNMR
+# Se comprueba que no existen valores faltantes tras el preprocesado
+sum(is.na(norm_SE_GastricCancerNMR@assays@data@listData[[1]]))
+```
+Se observa que al tratar el SummarizedExperiment con las funciones de POMA, pierden la información asignada a rowData. Dado que las dimensiones del SummarizedExperiment se mantienen, es posible añadir de nuevo la información de los metadatos. El nombre del assay también se ha perdido, pero se puede guardar la información en una nueva variable. A continuación, se realiza de nuevo el boxplot con los datos normalizados
+```{r}
+rowData(norm_SE_GastricCancerNMR)<-row_Data
+norm_SE_GastricCancerNMR
+matriz_concentraciones_norm<-norm_SE_GastricCancerNMR@assays@data@listData[[1]]
+boxplot(matriz_concentraciones_norm)
+```
+El nuevo boxplot  presenta una distribución mucho más simétrica que el anterior, por lo que la transformación de los datos ha sido adecuada, y aunque todavía se observan algunos outliers, se han reducido en comparación con el boxplot anterior. 
+```{r}
+#Creación del PCA
+pca<-prcomp(t(matriz_concentraciones_norm), scale = FALSE)
+#Creación de una paleta de colores para una mejor visualización de los puntos
+paleta<-c("GC" = "red", "BN" = "blue", "HE" = "green", "QC" = "black")
+#Representación del PCA
+plot(pca$x[,1], pca$x[,2], 
+     col = paleta[colData(norm_SE_GastricCancerNMR)$Class], 
+     xlab = "PC1", ylab = "PC2", pch = 19, main = "PCA")
+legend("topright", legend = unique(colData(norm_SE_GastricCancerNMR)$Class), 
+       col = 1:length(unique(colData(norm_SE_GastricCancerNMR)$Class)), pch = 19)
+```
+En un primer vistazo, se observa que el grupo control (QC) se encuentra agrupado en el centro del gráfico, lo que indica que estas muestras son muy similares entre sí, por lo que es un resultado esperable.
+El resto de grupos se encuentran más o menos superpuestos entre sí, mostrando el grupo de cáncer gástrico (GC) una ligera separación de los otros dos. El siguiente paso en el análisis consiste en comprobar cuales son los metabolitos que tienen un mayor peso en el PCA.
+```{r}
+m_pca<-pca$rotation
+metabolitos_pc1 <- rownames(m_pca)[order(abs(m_pca[, 1]), decreasing = TRUE)]
+head(metabolitos_pc1)
+metabolitos_pc2 <- rownames(m_pca)[order(abs(m_pca[, 2]), decreasing = TRUE)]
+head(metabolitos_pc2)
+```
+Se observa que los metabolitos más influyentes son, por un lado M65, M104, M53, M60, M5 y M108 para uno de los componentes, y para otro componente son M136, M139, M145, M45, M13 y M24.
+
+# Discusión
+En el estudio se ha utilizado un objeto tipo SummarizedExperiment, que permite almacenar y gestion los datos de metabolitos, lo cual ha facilitado la integración de los datos de estudio, que se corresponden con concentraciones de metabolitos, con los metadatos, que aportan una información de interés tanto para las muestras como para los metabolitos, lo cual es de gran utilidad a la hora de interpretar los resultados. Una vez realizado el análisis, se observa una clara separación del grupo control, lo que confirma la calidad de los datos dado que es un resultado esperable. En cuanto al resto de grupos, se observa una ligera separación del grupo GC (Cáncer Gástrico) con respecto a los otros dos grupos, enfermedad benigna (BN) y pacientes sanos (HE), los cuales muestran un mayor grado de solapamiento. En base a este resultado, podría concluirse que la metabolómica urinaria podría ser un factor de interés en cuanto a la detección del cáncer gástrico. Por otro lado, al haber registrado los metabolitos más influyentes en la diferenciación de estos grupos al realizar el PCA, podría dar lugar a una línea de investigación para determinar biomarcadores relevantes en la detección del Cáncer Gástrico.
+
+# Conclusiones
+
+Los objetos tipo SummarizedExperiment, junto con paquetes que facilitan su manejo como POMA, con componentes de Bioconductor que suponen un gran avance para el manejo e interpretación de los datos ómicos. En este caso, se han utilizado estos objetos para la elaboración de un análisis de componentes principales que permite la agrupación de muestras de distintos grupos de pacientes, pacientes con cáncer gástrico, enfermedad benigna, sanos y un grupo control. El PCA ha mostrado que el grupo control se encuentra claramente diferenciado, el grupo de cáncer gástrico se muestra ligeramente diferenciado con respecto a los individuos sanos y con enfermedad benigna, y estos dos últimos grupos muestran un mayor grado de solapamiento. Se determinan también los metabolitos que tienen una mayor importancia en el PCA, dando lugar a posibles biomarcadores que permitan la detección del cáncer gástrico.
+
+# Referencias
+
+Chan, A. W., Mercier, P., Schiller, D., Bailey, R., Robbins, S., Eurich, D. T., Sawyer, M. B., Broadhurst, D. (2016). 1H-NMR urinary metabolomic profiling for diagnosis of gastric cancer. British Journal of Cancer, 114(1), 59-62. doi:10.1038/bjc.2015.414
+
+Bioconductor. (2023). POMA: Preprocessing and statistical analysis of metabolomics data. Recuperado de https://www.bioconductor.org/packages/release/bioc/vignettes/POMA/inst/doc/POMA-workflow.html
+
+Bioconductor. (2023). SummarizedExperiment for Coordinating Experimental Assays, Samples, and Regions of Interest. Recuperado de https://www.bioconductor.org/packages/release/bioc/vignettes/SummarizedExperiment/inst/doc/SummarizedExperiment.html
+
+Enlace al repositorio en GitHub: https://github.com/vfructuoso/Fructuoso-Sanchez-Victor-PEC1.git
+
+# Anexo
+```{r}
+dim(SE_GastricCancerNMR) #Dimensiones del SummarizedExperiment
+```
+```{r}
+rowData(SE_GastricCancerNMR)
+```
+```{r}
+colData(SE_GastricCancerNMR)
+```
+```{r}
+head(assays(SE_GastricCancerNMR)$metabolitos)[,1:8] #Primeras filas de la matriz de datos
+#Se extraen únicamente las 8 primeras columnas para facilitar su lectura
+```
+```{r}
+#Boxplot extra, para completar todos los metabolitos
+boxplot(assays(SE_GastricCancerNMR)$metabolitos[51:100,])
+boxplot(assays(SE_GastricCancerNMR)$metabolitos[100:149,])
+```
+
+```{r}
+#Peso de los metabolitos en cada componente
+barplot(m_pca[, 1], main = "Cargas en PC1", ylab = "Carga", xlab = "Metabolitos")
+barplot(m_pca[, 2], main = "Cargas en PC2", ylab = "Carga", xlab = "Metabolitos")
+```
+

@@ -1,0 +1,9 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{Resumen}{1}{section*.2}%
+\contentsline {section}{Objetivos}{1}{section*.3}%
+\contentsline {section}{Métodos}{2}{section*.4}%
+\contentsline {section}{Resultados}{2}{section*.5}%
+\contentsline {section}{Discusión}{9}{section*.6}%
+\contentsline {section}{Conclusiones}{10}{section*.7}%
+\contentsline {section}{Referencias}{10}{section*.8}%
+\contentsline {section}{Anexo}{10}{section*.9}%
